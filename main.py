@@ -44,8 +44,8 @@ if args.set_class_iou is not None:
 # make sure that the cwd() is the location of the python script (so that every path makes sense)
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-GT_PATH = os.path.join(os.getcwd(), 'input', 'ground-truth')
-DR_PATH = os.path.join(os.getcwd(), 'input', 'detection-results')
+GT_PATH = os.path.join('../groundtruth')
+DR_PATH = os.path.join('../detection')
 # if there are no images then no animation can be shown
 IMG_PATH = os.path.join(os.getcwd(), 'input', 'images-optional')
 if os.path.exists(IMG_PATH): 
@@ -70,7 +70,10 @@ if not args.no_animation:
 draw_plot = False
 if not args.no_plot:
     try:
+        import matplotlib
+        matplotlib.use('Agg')
         import matplotlib.pyplot as plt
+        print("import \"matplotlib\"")
         draw_plot = True
     except ImportError:
         print("\"matplotlib\" not found, please install it to get the resulting plots.")
@@ -289,7 +292,7 @@ def draw_plot_func(dictionary, n_classes, window_title, plot_title, x_label, out
         for i, val in enumerate(sorted_values):
             str_val = " " + str(val) # add a space before
             if val < 1.0:
-                str_val = " {0:.2f}".format(val)
+                str_val = " {0:.4f}".format(val)
             t = plt.text(val, i, str_val, color=plot_color, va='center', fontweight='bold')
             # re-set axes to show number inside the figure
             if i == (len(sorted_values)-1): # largest bar
@@ -325,8 +328,8 @@ def draw_plot_func(dictionary, n_classes, window_title, plot_title, x_label, out
     # save the plot
     fig.savefig(output_path)
     # show image
-    if to_show:
-        plt.show()
+    # if to_show:
+    #     plt.show()
     # close the plot
     plt.close()
 
@@ -336,7 +339,7 @@ def draw_plot_func(dictionary, n_classes, window_title, plot_title, x_label, out
 TEMP_FILES_PATH = ".temp_files"
 if not os.path.exists(TEMP_FILES_PATH): # if it doesn't exist already
     os.makedirs(TEMP_FILES_PATH)
-results_files_path = "results"
+results_files_path = "../results"
 if os.path.exists(results_files_path): # if it exist already
     # reset the results directory
     shutil.rmtree(results_files_path)
@@ -859,7 +862,7 @@ if draw_plot:
 """
 if draw_plot:
     window_title = "mAP"
-    plot_title = "mAP = {0:.2f}%".format(mAP*100)
+    plot_title = "mAP = {0:.4f}%".format(mAP*100)
     x_label = "Average Precision"
     output_path = results_files_path + "/mAP.png"
     to_show = True
