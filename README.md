@@ -1,6 +1,6 @@
 # mAP (mean Average Precision)
 
-[![GitHub stars](https://img.shields.io/github/stars/Cartucho/mAP.svg?style=social&label=Stars)](https://github.com/Cartucho/mAP)
+Originally forcked from https://github.com/Cartucho/mAP
 
 This code will evaluate the performance of your neural net for object recognition.
 
@@ -123,9 +123,3 @@ In the [scripts/extra](https://github.com/Cartucho/mAP/tree/master/scripts/extra
     chair 0.292345 0 199 88 436
     book 0.269833 433 260 506 336
     ```
-## Authors:
-* **João Cartucho** - Please give me your feedback: to.cartucho@gmail.com
-
-    Feel free to contribute
-
-    [![GitHub contributors](https://img.shields.io/github/contributors/Cartucho/mAP.svg)](https://github.com/Cartucho/mAP/graphs/contributors)
