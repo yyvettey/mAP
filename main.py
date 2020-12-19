@@ -6,20 +6,98 @@ import operator
 import sys
 import argparse
 import math
-
 import numpy as np
+import xml.etree.ElementTree as ET
+from easydict import EasyDict as edict
+
+from pdb import set_trace as bp
 
 MINOVERLAP = 0.5 # default value (defined in the PASCAL VOC2012 challenge)
 
-parser = argparse.ArgumentParser()
-parser.add_argument('-na', '--no-animation', help="no animation is shown.", action="store_true")
-parser.add_argument('-np', '--no-plot', help="no plot is shown.", action="store_true")
-parser.add_argument('-q', '--quiet', help="minimalistic console output.", action="store_true")
+
+def list_files_walk_subdirs(path, exts):
+    if isinstance(exts, str):
+        exts = [exts]
+    return [os.path.join(pt, name)
+            for pt, dirs, files in os.walk(path)
+            for name in files
+            if name.lower().split('.')[-1] in exts and (not name.split('/')[-1].startswith('.'))]
+
+
+# as per the metadata file, input and output directories are the arguments
+[_, input_dir, output_dir] = sys.argv
+
+ROOT_PATH = os.getcwd()
+GT_PATH = os.path.join(os.getcwd(), input_dir, 'ref/')
+DR_PATH = os.path.join(os.getcwd(), input_dir, 'res/')
+print("REF DIR")
+print(GT_PATH)
+print("RES DIR")
+print(DR_PATH)
+
+
+# folders = os.listdir(os.path.join(ROOT_PATH))
+# print(folders)
+# for level in range(3):
+#     folders_new = []
+#     for folder in folders:
+#         print(os.path.join(ROOT_PATH, folder), ": ...")
+#         if os.path.isdir(os.path.join(ROOT_PATH, folder)):
+#             curr = os.listdir(os.path.join(ROOT_PATH, folder))
+#             print(curr)
+#             folders_new += [os.path.join(folder, _f) for _f in curr]
+#     folders = list(folders_new)
+
+args = edict()
+args.no_animation = True  # parser.add_argument('-na', '--no-animation', help="no animation is shown.", action="store_true")
+args.no_plot = True  # parser.add_argument('-np', '--no-plot', help="no plot is shown.", action="store_true")
+args.quiet = False  # parser.add_argument('-q', '--quiet', help="minimalistic console output.", action="store_true")
 # argparse receiving list of classes to be ignored (e.g., python main.py --ignore person book)
-parser.add_argument('-i', '--ignore', nargs='+', type=str, help="ignore a list of classes.")
+args.ignore = '' # parser.add_argument('-i', '--ignore', nargs='+', type=str, help="ignore a list of classes.")
 # argparse receiving list of classes with specific IoU (e.g., python main.py --set-class-iou person 0.7)
-parser.add_argument('--set-class-iou', nargs='+', type=str, help="set IoU for a specific class.")
-args = parser.parse_args()
+args.set_class_iou = ''  # parser.add_argument('--set-class-iou', nargs='+', type=str, help="set IoU for a specific class.")
+
+
+### convert xml/csv to txt if necessary ###
+# create VOC format files
+# print(os.listdir(DR_PATH))
+# xml_list = [f for f in os.listdir(DR_PATH) if f.endswith('xml') or f.endswith('csv') or f.endswith('txt')]
+xml_list = list_files_walk_subdirs(DR_PATH, ['xml', 'csv', 'txt', 'xml2'])
+id2dr_path = {}
+if len(xml_list) == 0:
+    print("Error: no .xml or .csv files found in predictions")
+    sys.exit()
+for tmp_file in xml_list:
+    # print(tmp_file)
+    _id = tmp_file.split('/')[-1].split('.')[0]
+    if tmp_file.endswith('xml2'):
+        shutil.move(tmp_file, tmp_file.replace(".xml2", ".xml"))
+        tmp_file = tmp_file.replace(".xml2", ".xml")
+    if tmp_file.endswith('xml'):
+        # with open(os.path.join(DR_PATH, tmp_file.replace(".xml", ".txt")), "a") as new_f:
+        with open(tmp_file.replace(".xml", ".txt"), "a") as new_f:
+            # root = ET.parse(os.path.join(DR_PATH, tmp_file)).getroot()
+            root = ET.parse(tmp_file).getroot()
+            for obj in root.findall('object'):
+                obj_name = obj.find('name').text.replace(' ', '_').rstrip().lower()
+                bndbox = obj.find('bndbox')
+                left = bndbox.find('xmin').text
+                top = bndbox.find('ymin').text
+                right = bndbox.find('xmax').text
+                bottom = bndbox.find('ymax').text
+                conf = obj.find('difficult').text
+                new_f.write("%s %s %s %s %s %s\n" % (obj_name, left, top, right, bottom, conf))
+        # os.remove(os.path.join(DR_PATH, tmp_file))
+        os.remove(tmp_file)
+        id2dr_path[_id] = tmp_file.replace(".xml", ".txt")
+    elif tmp_file.endswith('csv'):
+        # shutil.move(os.path.join(DR_PATH, tmp_file), os.path.join(DR_PATH, tmp_file.replace(".csv", ".txt")))
+        shutil.move(tmp_file, tmp_file.replace(".csv", ".txt"))
+        id2dr_path[_id] = tmp_file.replace(".csv", ".txt")
+    else:
+        id2dr_path[_id] = tmp_file
+print("Conversion completed!")
+
 
 '''
     0,0 ------> x (width)
@@ -43,20 +121,6 @@ if args.set_class_iou is not None:
 
 # make sure that the cwd() is the location of the python script (so that every path makes sense)
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-
-# GT_PATH = os.path.join(os.getcwd(), 'input', 'ground-truth')
-# DR_PATH = os.path.join(os.getcwd(), 'input', 'detection-results')
-GT_PATH = os.path.join(os.getcwd(), '../results', 'groundtruth')
-DR_PATH = os.path.join(os.getcwd(), '../results', 'detection')
-# if there are no images then no animation can be shown
-IMG_PATH = os.path.join(os.getcwd(), 'input', 'images-optional')
-if os.path.exists(IMG_PATH): 
-    for dirpath, dirnames, files in os.walk(IMG_PATH):
-        if not files:
-            # no image files found
-            args.no_animation = True
-else:
-    args.no_animation = True
 
 # try to import OpenCV if the user didn't choose the option --no-animation
 show_animation = False
@@ -338,10 +402,10 @@ def draw_plot_func(dictionary, n_classes, window_title, plot_title, x_label, out
 """
  Create a ".temp_files/" and "output/" directory
 """
-TEMP_FILES_PATH = ".temp_files"
+TEMP_FILES_PATH = os.path.join(ROOT_PATH, ".temp_files")
 if not os.path.exists(TEMP_FILES_PATH): # if it doesn't exist already
     os.makedirs(TEMP_FILES_PATH)
-output_files_path = "output"
+output_files_path = os.path.join(ROOT_PATH, "output")
 if os.path.exists(output_files_path): # if it exist already
     # reset the output directory
     shutil.rmtree(output_files_path)
@@ -358,7 +422,12 @@ if show_animation:
      Create a list of all the class names present in the ground-truth (gt_classes).
 """
 # get a list with the ground-truth files
-ground_truth_files_list = glob.glob(GT_PATH + '/*.txt')
+# ground_truth_files_list = glob.glob(GT_PATH + '/*.txt')
+ground_truth_files_list = list_files_walk_subdirs(GT_PATH, ['txt'])
+id2gt_path = {}
+for tmp_file in ground_truth_files_list:
+    _id = tmp_file.split('/')[-1].split('.')[0]
+    id2gt_path[_id] = tmp_file
 if len(ground_truth_files_list) == 0:
     error("Error: No ground-truth files found!")
 ground_truth_files_list.sort()
@@ -369,10 +438,16 @@ counter_images_per_class = {}
 gt_files = []
 for txt_file in ground_truth_files_list:
     #print(txt_file)
-    file_id = txt_file.split(".txt", 1)[0]
+    # file_id = txt_file.split(".txt", 1)[0]
+    file_id = txt_file.split('/')[-1].split('.')[0]
     file_id = os.path.basename(os.path.normpath(file_id))
     # check if there is a correspondent detection-results file
-    temp_path = os.path.join(DR_PATH, (file_id + ".txt"))
+    # temp_path = os.path.join(DR_PATH, (file_id + ".txt"))
+    try:
+        temp_path = id2dr_path[file_id]
+    except:
+        bp()
+        temp_path = id2dr_path[file_id]
     if not os.path.exists(temp_path):
         error_msg = "Error. File not found: {}\n".format(temp_path)
         error_msg += "(You can avoid this error message by running extra/intersect-gt-and-dr.py)"
@@ -463,17 +538,23 @@ if specific_iou_flagged:
      Load each of the detection-results files into a temporary ".json" file.
 """
 # get a list with the detection-results files
-dr_files_list = glob.glob(DR_PATH + '/*.txt')
+# dr_files_list = glob.glob(DR_PATH + '/*.txt')
+dr_files_list = list_files_walk_subdirs(DR_PATH, ['txt'])
 dr_files_list.sort()
+# print(dr_files_list)
 
 for class_index, class_name in enumerate(gt_classes):
     bounding_boxes = []
     for txt_file in dr_files_list:
         #print(txt_file)
         # the first time it checks if all the corresponding ground-truth files exist
-        file_id = txt_file.split(".txt",1)[0]
+        # file_id = txt_file.split(".txt",1)[0]
+        file_id = txt_file.split('/')[-1].split('.')[0]
+        # print("===", file_id)
         file_id = os.path.basename(os.path.normpath(file_id))
+        # print(file_id, "===")
         temp_path = os.path.join(GT_PATH, (file_id + ".txt"))
+        temp_path = id2gt_path[file_id]
         if class_index == 0:
             if not os.path.exists(temp_path):
                 error_msg = "Error. File not found: {}\n".format(temp_path)
@@ -482,8 +563,15 @@ for class_index, class_name in enumerate(gt_classes):
         lines = file_lines_to_list(txt_file)
         for line in lines:
             try:
-                tmp_class_name, confidence, left, top, right, bottom = line.split()
+                # tmp_class_name, confidence, left, top, right, bottom = line.split()
+                if '"' in line:
+                  tmp_class_name = line[line.index('"')+1:line.index('"', line.index('"')+1)]
+                  left, top, right, bottom, confidence = line[line.index('"', line.index('"')+1)+1:].split()
+                else:
+                  tmp_class_name, left, top, right, bottom, confidence = line.split()
+                # confidence = 1 - float(confidence)
             except ValueError:
+                bp()
                 error_msg = "Error: File " + txt_file + " in the wrong format.\n"
                 error_msg += " Expected: <class_name> <confidence> <left> <top> <right> <bottom>\n"
                 error_msg += " Received: " + line
@@ -734,30 +822,44 @@ with open(output_files_path + "/output.txt", 'w') as output_file:
     output_file.write(text + "\n")
     print(text)
 
-"""
- Draw false negatives
-"""
-pink = (203,192,255)
-for tmp_file in gt_files:
-    ground_truth_data = json.load(open(tmp_file))
-    #print(ground_truth_data)
-    # get name of corresponding image
-    start = TEMP_FILES_PATH + '/'
-    img_id = tmp_file[tmp_file.find(start)+len(start):tmp_file.rfind('_ground_truth.json')]
-    img_cumulative_path = output_files_path + "/images/" + img_id + ".jpg"
-    img = cv2.imread(img_cumulative_path)
-    if img is None:
-        img_path = IMG_PATH + '/' + img_id + ".jpg"
-        img = cv2.imread(img_path)
-    # draw false negatives
-    for obj in ground_truth_data:
-        if not obj['used']:
-            bbgt = [ int(round(float(x))) for x in obj["bbox"].split() ]
-            cv2.rectangle(img,(bbgt[0],bbgt[1]),(bbgt[2],bbgt[3]),pink,2)
-    cv2.imwrite(img_cumulative_path, img)
+
+################################
+# the scores for the leaderboard must be in a file named "scores.txt"
+# https://github.com/codalab/codalab-competitions/wiki/User_Building-a-Scoring-Program-for-a-Competition#directory-structure-for-submissions
+with open(os.path.join(ROOT_PATH, "output", 'scores.txt'), 'w') as score_file:
+    for key, ap in ap_dictionary.items():
+        score_file.write("%s:%f\n"%(key, ap*100))
+    score_file.write("mAP:%f\n"%(mAP*100))
+################################
+
+
+if draw_plot:
+    """
+    Draw false negatives
+    """
+    pink = (203,192,255)
+    for tmp_file in gt_files:
+        ground_truth_data = json.load(open(tmp_file))
+        #print(ground_truth_data)
+        # get name of corresponding image
+        start = TEMP_FILES_PATH + '/'
+        img_id = tmp_file[tmp_file.find(start)+len(start):tmp_file.rfind('_ground_truth.json')]
+        img_cumulative_path = output_files_path + "/images/" + img_id + ".jpg"
+        img = cv2.imread(img_cumulative_path)
+        if img is None:
+            img_path = IMG_PATH + '/' + img_id + ".jpg"
+            img = cv2.imread(img_path)
+        # draw false negatives
+        for obj in ground_truth_data:
+            if not obj['used']:
+                bbgt = [ int(round(float(x))) for x in obj["bbox"].split() ]
+                cv2.rectangle(img,(bbgt[0],bbgt[1]),(bbgt[2],bbgt[3]),pink,2)
+        cv2.imwrite(img_cumulative_path, img)
+
 
 # remove the temp_files directory
 shutil.rmtree(TEMP_FILES_PATH)
+
 
 """
  Count total of detection-results
@@ -816,11 +918,11 @@ with open(output_files_path + "/output.txt", 'a') as output_file:
 """
  Finish counting true positives
 """
-for class_name in dr_classes:
-    # if class exists in detection-result but not in ground-truth then there are no true positives in that class
-    if class_name not in gt_classes:
-        count_true_positives[class_name] = 0
-#print(count_true_positives)
+# for class_name in dr_classes:
+#     # if class exists in detection-result but not in ground-truth then there are no true positives in that class
+#     if class_name not in gt_classes:
+#         count_true_positives[class_name] = 0
+# print(count_true_positives)
 
 """
  Plot the total number of occurences of each class in the "detection-results" folder
@@ -858,8 +960,11 @@ with open(output_files_path + "/output.txt", 'a') as output_file:
     for class_name in sorted(dr_classes):
         n_det = det_counter_per_class[class_name]
         text = class_name + ": " + str(n_det)
-        text += " (tp:" + str(count_true_positives[class_name]) + ""
-        text += ", fp:" + str(n_det - count_true_positives[class_name]) + ")\n"
+        if class_name in count_true_positives:
+            text += " (tp:" + str(count_true_positives[class_name]) + ""
+            text += ", fp:" + str(n_det - count_true_positives[class_name]) + ")\n"
+        else:
+            text += "\n"
         output_file.write(text)
 
 """
